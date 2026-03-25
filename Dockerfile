@@ -19,6 +19,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 COPY frontend/ ./frontend/
 
+# Copiar custom_component para instalación automática
+COPY custom_components/ ./custom_components/
+COPY install_integration.sh ./install_integration.sh
+RUN chmod +x ./install_integration.sh
+
 # Variables de entorno
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=app.main
@@ -28,4 +33,4 @@ ENV FLASK_ENV=production
 EXPOSE 8080
 
 # Comando de inicio
-CMD ["python", "-m", "app.main"]
+CMD ["./run.sh"]

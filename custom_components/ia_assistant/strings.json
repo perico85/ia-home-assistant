@@ -1,63 +1,46 @@
 {
-    "config": [
-        {
-            "title": "IA Home Assistant",
-            "description": "Configura el asistente de IA para Home Assistant",
-            "data": {
-                "llm_provider": "Proveedor LLM",
-                "llm_model": "Modelo (ej: llama3.2, gpt-4o, minimax-m2.7:cloud)",
-                "api_key": "API Key (requerido para proveedores cloud)",
-                "base_url": "URL base (opcional)",
-                "security_mode": "Modo de seguridad (safe, hybrid, unrestricted)",
-                "language": "Idioma"
-            },
-            "data_description": {
-                "llm_provider": "Selecciona el proveedor del modelo de IA",
-                "llm_model": "Escribe el nombre del modelo tal cual aparece en el proveedor",
-                "api_key": "Clave API necesaria para proveedores cloud (Ollama Cloud, OpenAI, MiniMax, etc.)",
-                "security_mode": "Hybrid permite acciones normales sin confirmación pero requiere confirmación para acciones críticas"
-            }
-        }
-    ],
-    "options": [
-        {
-            "title": "Opciones de IA Assistant",
-            "input": {
-                "llm_model": {
-                    "name": "Modelo",
-                    "description": "Cambia el modelo de IA"
+    "title": "IA Home Assistant",
+    "config": {
+        "step": {
+            "user": {
+                "title": "Configurar IA Assistant",
+                "description": "Configura el asistente IA para Home Assistant. El addon debe estar instalado y ejecutándose.",
+                "data": {
+                    "addon_url": "URL del addon (dejar por defecto si está en el mismo servidor)",
+                    "llm_model": "Modelo a utilizar",
+                    "security_mode": "Modo de seguridad",
+                    "language": "Idioma"
                 },
-                "security_mode": {
-                    "name": "Modo de seguridad",
-                    "description": "Control de confirmaciones"
+                "data_description": {
+                    "addon_url": "La URL donde se ejecuta el addon IA Home Assistant",
+                    "llm_model": "El modelo de lenguaje a utilizar (ej: llama3.2, minimax-m2.7:cloud)",
+                    "security_mode": "safe: confirmar acciones críticas | hybrid: confirmar solo algunas | unrestricted: ejecutar todo automáticamente",
+                    "language": "Idioma para las respuestas del asistente"
                 }
+            },
+            "onboarding": {
+                "title": "Configuración automática",
+                "description": "Se configurará automáticamente con los valores por defecto del addon."
             }
+        },
+        "error": {
+            "cannot_connect": "No se puede conectar al addon. Verifica que esté ejecutándose."
+        },
+        "abort": {
+            "already_configured": "IA Assistant ya está configurado."
         }
-    ],
-    "services": {
-        "chat": {
-            "name": "Chat",
-            "description": "Envía un mensaje al asistente",
-            "fields": {
-                "message": {
-                    "name": "Mensaje",
-                    "description": "Mensaje a enviar"
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Opciones de IA Assistant",
+                "data": {
+                    "addon_url": "URL del addon",
+                    "llm_model": "Modelo",
+                    "security_mode": "Modo de seguridad",
+                    "language": "Idioma"
                 }
             }
-        },
-        "set_model": {
-            "name": "Cambiar modelo",
-            "description": "Cambia el modelo de IA activo",
-            "fields": {
-                "model": {
-                    "name": "Modelo",
-                    "description": "Nombre del modelo"
-                }
-            }
-        },
-        "clear_history": {
-            "name": "Limpiar historial",
-            "description": "Limpia el historial de conversación"
         }
     }
 }

@@ -1,7 +1,13 @@
 """IA Home Assistant - Integración para Home Assistant Assist"""
 
-from .const import DOMAIN
+import logging
+from homeassistant.components.conversation import async_register
+
+from .const import DOMAIN, CONF_ADDON_URL, DEFAULT_ADDON_URL
 from .conversation_agent import IAConversationAgent
+
+_LOGGER = logging.getLogger(__name__)
+
 
 async def async_setup(hass, config):
     """Configurar la integración"""
@@ -14,13 +20,29 @@ async def async_setup_entry(hass, entry):
     # Guardar configuración
     hass.data[DOMAIN][entry.entry_id] = entry.data
 
-    # Registrar el agente de conversación
-    from homeassistant.components.conversation import async_register
+    # Obtener URL del addon
+    addon_url = entry.data.get(CONF_ADDON_URL, DEFAULT_ADDON_URL)
 
+    # Crear el agente de conversación
     agent = IAConversationAgent(hass, entry.data)
-    async_register(hass, DOMAIN, entry.entry_id, agent)
 
-    return True
+    # Registrar el agente de conversación
+    try:
+        # Usar la nueva API de registro
+        from homeassistant.components.conversation import async_create_agent
+
+        # Registrar en el registro de agentes
+        hass.data[DOMAIN][f"{entry.entry_id}_agent"] = agent
+
+        # Registrar para que aparezca en la lista de agentes
+        async_register(hass, DOMAIN, entry.entry_id, agent)
+
+        _LOGGER.info(f"IA Assistant registrado correctamente con URL: {addon_url}")
+        return True
+
+    except Exception as e:
+        _LOGGER.error(f"Error registrando IA Assistant: {e}")
+        return False
 
 
 async def async_unload_entry(hass, entry):

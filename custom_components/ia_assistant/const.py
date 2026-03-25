@@ -1,8 +1,9 @@
-"""Constantes para la integración"""
+"""Constantes para IA Assistant"""
 
 DOMAIN = "ia_assistant"
 
 # Configuración
+CONF_ADDON_URL = "addon_url"
 CONF_LLM_PROVIDER = "llm_provider"
 CONF_LLM_MODEL = "llm_model"
 CONF_API_KEY = "api_key"
@@ -12,31 +13,20 @@ CONF_SECURITY_MODE = "security_mode"
 CONF_LANGUAGE = "language"
 
 # Valores por defecto
-DEFAULT_PROVIDER = "ollama"
+DEFAULT_PROVIDER = "ollama_cloud"
 DEFAULT_MODEL = "llama3.2"
 DEFAULT_SECURITY_MODE = "hybrid"
 DEFAULT_LANGUAGE = "es"
+DEFAULT_ADDON_URL = "http://homeassistant:8080"
 
 # Proveedores soportados
 SUPPORTED_PROVIDERS = {
-    "ollama": {
-        "name": "Ollama (local/cloud)",
-        "models": ["llama3.2", "llama3.1:70b", "mistral", "codellama", "gemma2"]
+    "ollama_cloud": {
+        "name": "Ollama Cloud",
+        "models": ["llama3.2", "llama3.1:70b", "minimax-m2.7:cloud", "gpt-oss:120b-cloud"]
     },
-    "openai": {
-        "name": "OpenAI",
-        "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]
-    },
-    "minimax": {
-        "name": "MiniMax",
-        "models": ["minimax-m2.7:cloud", "minimax-m1:cloud", "abab6.5-chat"]
-    },
-    "deepseek": {
-        "name": "DeepSeek",
-        "models": ["deepseek-chat", "deepseek-coder"]
-    },
-    "groq": {
-        "name": "Groq",
-        "models": ["llama-3.1-70b", "mixtral-8x7b"]
+    "ollama_local": {
+        "name": "Ollama Local",
+        "models": ["llama3.2", "mistral", "codellama", "gemma2"]
     }
 }

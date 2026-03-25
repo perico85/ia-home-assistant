@@ -4,8 +4,9 @@ Proporciona endpoints HTTP para interactuar con el asistente
 """
 
 import logging
+import asyncio
 from flask import Blueprint, request, jsonify, Response
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +23,6 @@ action_executor = None
 def init_api(ollama, ha, context, executor):
     """
     Inicializar API con las referencias necesarias
-
-    Args:
-        ollama: Cliente de Ollama
-        ha: Cliente de Home Assistant
-        context: Gestor de contexto
-        executor: Ejecutor de acciones
     """
     global ollama_client, ha_client, context_manager, action_executor
     ollama_client = ollama
@@ -36,96 +31,137 @@ def init_api(ollama, ha, context, executor):
     action_executor = executor
 
 
+@bp.route('/health', methods=['GET'])
+def health():
+    """Endpoint de salud para verificar que el addon está funcionando"""
+    return jsonify({'status': 'ok', 'version': '1.0.0'})
+
+
 @bp.route('/status', methods=['GET'])
 def get_status():
     """Obtener estado del sistema"""
+    try:
+        ollama_connected = ollama_client.test_connection() if ollama_client else False
+        ha_connected = ha_client.test_connection() if ha_client else False
+    except Exception as e:
+        logger.error(f"Error verificando conexiones: {e}")
+        ollama_connected = False
+        ha_connected = False
+
     return jsonify({
         'status': 'ok',
         'ollama': {
-            'model': ollama_client.model,
-            'connected': ollama_client.test_connection()
+            'model': getattr(ollama_client, 'model', 'unknown') if ollama_client else None,
+            'connected': ollama_connected
         },
         'homeassistant': {
-            'url': ha_client.url,
-            'connected': ha_client.test_connection()
+            'url': ha_client.url if ha_client else None,
+            'connected': ha_connected
         },
         'context': {
-            'messages': len(context_manager.conversation_history),
-            'language': context_manager.language
+            'messages': len(context_manager.conversation_history) if context_manager else 0,
+            'language': getattr(context_manager, 'language', 'es') if context_manager else 'es'
         }
     })
 
 
 @bp.route('/chat', methods=['POST'])
-async def chat():
+def chat():
     """
     Enviar mensaje al asistente
 
     Body JSON:
         {
-            "message": "string",
-            "session_id": "string (opcional)",
-            "context": {} (opcional)
+            "message": "string (requerido)",
+            "language": "string (opcional, default: es)",
+            "context": {
+                "entities": [...],
+                "conversation_id": "string"
+            }
+        }
+
+    Returns:
+        {
+            "success": bool,
+            "message": "string (respuesta del asistente)"
         }
     """
     data = request.get_json()
 
     if not data or 'message' not in data:
-        return jsonify({'error': 'message es requerido'}), 400
+        return jsonify({'success': False, 'error': 'message es requerido'}), 400
 
     message = data['message']
-    session_id = data.get('session_id', 'default')
+    language = data.get('language', 'es')
+    context_data = data.get('context', {})
+    entities = context_data.get('entities', [])
 
     try:
-        # Añadir al contexto
-        context_manager.add_message('user', message)
-
-        # Obtener contexto actualizado
-        entities = await ha_client.get_states()
-        context_manager.update_entity_context({
-            e['entity_id']: e for e in entities[:50]
-        })
-
-        # Construir mensajes
-        from app.tools.entity_tools import get_tool_definitions
-        from app.prompts.system_prompt import get_system_prompt
-
-        tools = get_tool_definitions()
-        messages = context_manager.get_messages_for_llm()
-
-        system_prompt = get_system_prompt(
-            language=context_manager.language,
-            system_context=context_manager._build_system_context()
-        )
-        messages.insert(0, {"role": "system", "content": system_prompt})
-
-        # Llamar a Ollama
-        response = await ollama_client.chat(messages, tools=tools)
-
-        if response.get('success'):
-            content = response.get('message', {}).get('content', '')
-            context_manager.add_message('assistant', content)
-            return jsonify({
-                'success': True,
-                'response': content,
-                'model': response.get('model')
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': response.get('error', 'Error desconocido')
-            }), 500
-
+        # Ejecutar de forma síncrona usando asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(_process_chat(message, language, entities))
+        loop.close()
+        return jsonify(result)
     except Exception as e:
         logger.error(f"Error en chat: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+async def _process_chat(message: str, language: str, entities: List[Dict]) -> Dict:
+    """Procesar mensaje de chat"""
+    # Añadir al contexto
+    context_manager.add_message('user', message)
+
+    # Actualizar contexto con entidades proporcionadas
+    if entities:
+        context_manager.update_entity_context({
+            e['entity_id']: e for e in entities
+        })
+    else:
+        # Obtener entidades de Home Assistant si no se proporcionaron
+        try:
+            ha_entities = await ha_client.get_states()
+            context_manager.update_entity_context({
+                e['entity_id']: e for e in ha_entities[:50]
+            })
+        except Exception as e:
+            logger.warning(f"No se pudieron obtener entidades: {e}")
+
+    # Construir mensajes para el LLM
+    from app.tools.entity_tools import get_tool_definitions
+    from app.prompts.system_prompt import get_system_prompt
+
+    tools = get_tool_definitions()
+    messages = context_manager.get_messages_for_llm()
+
+    system_prompt = get_system_prompt(
+        language=language,
+        system_context=context_manager._build_system_context()
+    )
+    messages.insert(0, {"role": "system", "content": system_prompt})
+
+    # Llamar a Ollama
+    response = await ollama_client.chat(messages, tools=tools)
+
+    if response.get('success'):
+        content = response.get('message', {}).get('content', '')
+        context_manager.add_message('assistant', content)
+        return {
+            'success': True,
+            'message': content,
+            'model': response.get('model')
+        }
+    else:
+        return {
+            'success': False,
+            'error': response.get('error', 'Error desconocido')
+        }
 
 
 @bp.route('/chat/stream', methods=['POST'])
-async def chat_stream():
-    """
-    Enviar mensaje con streaming de respuesta
-    """
+def chat_stream():
+    """Enviar mensaje con streaming de respuesta"""
     data = request.get_json()
 
     if not data or 'message' not in data:
@@ -145,8 +181,6 @@ async def chat_stream():
         )
         messages.insert(0, {"role": "system", "content": system_prompt})
 
-        import asyncio
-
         async def stream_response():
             full_response = ""
             async for chunk in ollama_client.chat_stream(messages):
@@ -156,7 +190,6 @@ async def chat_stream():
             context_manager.add_message('assistant', full_response)
             yield "data: [DONE]\n\n"
 
-        # Ejecutar en el event loop
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -167,19 +200,16 @@ async def chat_stream():
 
 
 @bp.route('/entities', methods=['GET'])
-async def get_entities():
-    """
-    Obtener entidades
-
-    Query params:
-        domain: Filtrar por dominio
-        area: Filtrar por área
-    """
+def get_entities():
+    """Obtener entidades"""
     domain = request.args.get('domain')
     area = request.args.get('area')
 
     try:
-        entities = await ha_client.get_entities(domain=domain, area=area)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        entities = loop.run_until_complete(ha_client.get_entities(domain=domain, area=area))
+        loop.close()
         return jsonify({
             'success': True,
             'entities': entities,
@@ -190,76 +220,68 @@ async def get_entities():
 
 
 @bp.route('/entities/<entity_id>', methods=['GET'])
-async def get_entity_state(entity_id: str):
+def get_entity_state(entity_id: str):
     """Obtener estado de una entidad"""
     try:
-        state = await ha_client.get_state(entity_id)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        state = loop.run_until_complete(ha_client.get_state(entity_id))
+        loop.close()
         if state:
-            return jsonify({
-                'success': True,
-                'entity': state
-            })
+            return jsonify({'success': True, 'entity': state})
         else:
-            return jsonify({
-                'success': False,
-                'error': 'Entidad no encontrada'
-            }), 404
+            return jsonify({'success': False, 'error': 'Entidad no encontrada'}), 404
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
 @bp.route('/entities/<entity_id>/turn_on', methods=['POST'])
-async def turn_on_entity(entity_id: str):
+def turn_on_entity(entity_id: str):
     """Encender entidad"""
     data = request.get_json() or {}
     brightness = data.get('brightness')
 
     try:
-        result = await action_executor.execute({
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(action_executor.execute({
             'name': 'turn_on',
-            'params': {
-                'entity_id': entity_id,
-                'brightness': brightness
-            }
-        })
+            'params': {'entity_id': entity_id, 'brightness': brightness}
+        }))
+        loop.close()
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
 @bp.route('/entities/<entity_id>/turn_off', methods=['POST'])
-async def turn_off_entity(entity_id: str):
+def turn_off_entity(entity_id: str):
     """Apagar entidad"""
     try:
-        result = await action_executor.execute({
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(action_executor.execute({
             'name': 'turn_off',
             'params': {'entity_id': entity_id}
-        })
+        }))
+        loop.close()
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
 @bp.route('/service', methods=['POST'])
-async def call_service():
-    """
-    Llamar servicio de Home Assistant
-
-    Body JSON:
-        {
-            "domain": "string",
-            "service": "string",
-            "entity_id": "string (opcional)",
-            "data": {} (opcional)
-        }
-    """
+def call_service():
+    """Llamar servicio de Home Assistant"""
     data = request.get_json()
 
     if not data or 'domain' not in data or 'service' not in data:
         return jsonify({'error': 'domain y service son requeridos'}), 400
 
     try:
-        result = await action_executor.execute({
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(action_executor.execute({
             'name': 'call_service',
             'params': {
                 'domain': data['domain'],
@@ -267,72 +289,8 @@ async def call_service():
                 'entity_id': data.get('entity_id'),
                 'data': data.get('data', {})
             }
-        })
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@bp.route('/automations', methods=['GET'])
-async def get_automations():
-    """Obtener todas las automatizaciones"""
-    try:
-        automations = await ha_client.get_automations()
-        return jsonify({
-            'success': True,
-            'automations': automations,
-            'count': len(automations)
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@bp.route('/automations', methods=['POST'])
-async def create_automation():
-    """
-    Crear automatización
-
-    Body JSON:
-        {
-            "name": "string",
-            "triggers": [],
-            "conditions": [] (opcional),
-            "actions": []
-        }
-    """
-    data = request.get_json()
-
-    if not data:
-        return jsonify({'error': 'Datos requeridos'}), 400
-
-    try:
-        from app.tools.automation import build_automation_config
-
-        config = build_automation_config(
-            name=data.get('name', 'Nueva automatización'),
-            triggers=data.get('triggers', []),
-            actions=data.get('actions', []),
-            conditions=data.get('conditions'),
-            description=data.get('description', '')
-        )
-
-        result = await action_executor.execute({
-            'name': 'create_automation',
-            'params': {'config': config}
-        })
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@bp.route('/automations/<automation_id>', methods=['DELETE'])
-async def delete_automation(automation_id: str):
-    """Eliminar automatización"""
-    try:
-        result = await action_executor.execute({
-            'name': 'delete_automation',
-            'params': {'automation_id': automation_id}
-        })
+        }))
+        loop.close()
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -342,14 +300,8 @@ async def delete_automation(automation_id: str):
 def get_conversation_history():
     """Obtener historial de conversación"""
     limit = request.args.get('limit', 50, type=int)
-
     history = list(context_manager.conversation_history)[-limit:]
-
-    return jsonify({
-        'success': True,
-        'history': history,
-        'count': len(history)
-    })
+    return jsonify({'success': True, 'history': history, 'count': len(history)})
 
 
 @bp.route('/history', methods=['DELETE'])
@@ -362,44 +314,16 @@ def clear_conversation_history():
 @bp.route('/model', methods=['GET'])
 def get_model():
     """Obtener modelo actual"""
-    return jsonify({
-        'model': ollama_client.model
-    })
+    return jsonify({'model': ollama_client.model})
 
 
 @bp.route('/model', methods=['PUT'])
 def set_model():
     """Cambiar modelo"""
     data = request.get_json()
-
     if not data or 'model' not in data:
         return jsonify({'error': 'model es requerido'}), 400
 
     model = data['model']
     ollama_client.set_model(model)
-
-    return jsonify({
-        'success': True,
-        'model': model
-    })
-
-
-@bp.route('/logs', methods=['GET'])
-async def get_action_logs():
-    """Obtener log de acciones"""
-    limit = request.args.get('limit', 100, type=int)
-
-    logs = action_executor.get_action_log(limit=limit)
-
-    return jsonify({
-        'success': True,
-        'logs': logs,
-        'count': len(logs)
-    })
-
-
-@bp.route('/rollback', methods=['POST'])
-async def rollback_last_action():
-    """Deshacer última acción"""
-    result = await action_executor.rollback_last()
-    return jsonify(result)
+    return jsonify({'success': True, 'model': model})
