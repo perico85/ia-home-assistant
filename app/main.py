@@ -92,19 +92,22 @@ ha_client = ha_api.HomeAssistantClient(
 
 # Seleccionar cliente Ollama según el modo
 if app.config['OLLAMA_MODE'] == 'cloud' or ':cloud' in app.config['OLLAMA_MODEL']:
+    # Para Ollama Cloud, usar URL por defecto si no se especifica
+    cloud_url = app.config['OLLAMA_BASE_URL'] if app.config['OLLAMA_BASE_URL'] else 'https://ollama.com'
     ollama = ollama_cloud_client.OllamaCloudClient(
         model=app.config['OLLAMA_MODEL'],
         api_key=app.config['OLLAMA_API_KEY'],
-        base_url=app.config['OLLAMA_BASE_URL'] if app.config['OLLAMA_BASE_URL'] else None,
+        base_url=cloud_url,
         use_cloud=True
     )
-    logger.info("Usando Ollama Cloud")
+    logger.info(f"Usando Ollama Cloud en {cloud_url}")
 else:
+    local_url = app.config['OLLAMA_BASE_URL'] if app.config['OLLAMA_BASE_URL'] else 'http://localhost:11434'
     ollama = ollama_client.OllamaClient(
-        base_url=app.config['OLLAMA_BASE_URL'] or 'http://localhost:11434',
+        base_url=local_url,
         model=app.config['OLLAMA_MODEL']
     )
-    logger.info("Usando Ollama local")
+    logger.info(f"Usando Ollama local en {local_url}")
 
 context_manager = context.ContextManager(language=app.config['LANGUAGE'])
 action_executor = executor.ActionExecutor(ha_client, app.config['SECURITY_MODE'])
