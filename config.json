@@ -4,7 +4,7 @@
   "slug": "ia_home_assistant",
   "description": "Asistente IA con control total de Home Assistant usando Ollama Cloud o modelos locales",
   "arch": ["armhf", "armv7", "aarch64", "amd64", "i386"],
-  "url": "https://github.com/tu-usuario/ia-home-assistant",
+  "url": "https://github.com/perico85/ia-home-assistant",
   "image": "ia-home-assistant",
   "startup": "application",
   "boot": "auto",

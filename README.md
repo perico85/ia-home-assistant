@@ -8,7 +8,7 @@ Asistente de inteligencia artificial con control total de Home Assistant usando 
 
 1. En Home Assistant, ve a **Configuración → Add-ons → Tienda de Add-ons**
 2. Click en los **3 puntos** → **Repositorios**
-3. Añade la URL: `https://github.com/tu-usuario/ia-home-assistant`
+3. Añade la URL: `https://github.com/perico85/ia-home-assistant`
 4. Busca "IA Home Assistant" e instala
 
 ### Método 2: Instalación Local
@@ -75,8 +75,8 @@ docker exec -it ia-home-assistant python -m app.main --cli
 
 ## Soporte
 
-- Documentación: [GitHub](https://github.com/tu-usuario/ia-home-assistant)
-- Issues: [GitHub Issues](https://github.com/tu-usuario/ia-home-assistant/issues)
+- Documentación: [GitHub](https://github.com/perico85/ia-home-assistant)
+- Issues: [GitHub Issues](https://github.com/perico85/ia-home-assistant/issues)
 
 ## Licencia
 
