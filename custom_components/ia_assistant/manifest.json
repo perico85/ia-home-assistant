@@ -1,0 +1,11 @@
+{
+    "domain": "ia_assistant",
+    "name": "IA Home Assistant",
+    "version": "1.0.0",
+    "documentation": "https://github.com/tu-usuario/ia-home-assistant",
+    "dependencies": [],
+    "codeowners": ["@tu-usuario"],
+    "requirements": ["aiohttp>=3.9.0"],
+    "iot_class": "cloud_polling",
+    "integration_type": "service"
+}

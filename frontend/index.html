@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IA Home Assistant</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏠</text></svg>">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🤖 IA Home Assistant</h1>
+            <div class="header-controls">
+                <select id="model-select" class="model-select">
+                    <option value="llama3.2">Llama 3.2</option>
+                    <option value="llama3.1:70b">Llama 3.1 70B</option>
+                    <option value="mistral">Mistral</option>
+                    <option value="codellama">Code Llama</option>
+                    <option value="deepseek-coder">DeepSeek Coder</option>
+                    <option value="gemma2">Gemma 2</option>
+                </select>
+                <div id="status-indicator" class="status-indicator">
+                    <span class="status-dot connecting"></span>
+                    <span id="status-text">Conectando...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Panel principal -->
+        <div class="main-panel">
+            <!-- Chat -->
+            <div class="chat-panel">
+                <div id="chat-messages" class="chat-messages">
+                    <!-- Mensajes dinámicos -->
+                </div>
+
+                <div class="chat-input-container">
+                    <button id="voice-button" class="voice-button" title="Entrada de voz">
+                        🎤
+                    </button>
+                    <textarea
+                        id="chat-input"
+                        class="chat-input"
+                        placeholder="Escribe tu mensaje..."
+                        rows="1"
+                    ></textarea>
+                    <button id="send-button" class="chat-button">
+                        Enviar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Panel lateral -->
+            <div class="side-panel">
+                <!-- Estado del sistema -->
+                <div class="panel-card">
+                    <h3>📊 Estado</h3>
+                    <div id="system-status">
+                        <p>Entidades activas: <strong id="active-entities">--</strong></p>
+                        <p>Última acción: <strong id="last-action">--</strong></p>
+                    </div>
+                </div>
+
+                <!-- Entidades recientes -->
+                <div class="panel-card">
+                    <h3>💡 Entidades</h3>
+                    <ul id="entities-list" class="entities-list">
+                        <li class="entity-item">
+                            <span class="entity-name">Cargando...</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Acciones rápidas -->
+                <div class="panel-card">
+                    <h3>⚡ Acciones rápidas</h3>
+                    <div class="quick-actions">
+                        <button class="quick-action" data-action="lights-on">
+                            <div class="quick-action-icon">💡</div>
+                            <div class="quick-action-text">Encender luces</div>
+                        </button>
+                        <button class="quick-action" data-action="lights-off">
+                            <div class="quick-action-icon">🌑</div>
+                            <div class="quick-action-text">Apagar luces</div>
+                        </button>
+                        <button class="quick-action" data-action="status">
+                            <div class="quick-action-icon">📈</div>
+                            <div class="quick-action-text">Estado</div>
+                        </button>
+                        <button class="quick-action" data-action="temperature">
+                            <div class="quick-action-icon">🌡️</div>
+                            <div class="quick-action-text">Temperatura</div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de confirmación -->
+    <div id="confirmation-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="modal-title" class="modal-title">Confirmar acción</h2>
+            <p id="modal-message" class="modal-message">¿Estás seguro?</p>
+            <div class="modal-buttons">
+                <button id="modal-cancel" class="button-secondary">Cancelar</button>
+                <button id="modal-confirm" class="chat-button button-danger">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

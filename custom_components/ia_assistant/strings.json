@@ -1,0 +1,63 @@
+{
+    "config": [
+        {
+            "title": "IA Home Assistant",
+            "description": "Configura el asistente de IA para Home Assistant",
+            "data": {
+                "llm_provider": "Proveedor LLM",
+                "llm_model": "Modelo (ej: llama3.2, gpt-4o, minimax-m2.7:cloud)",
+                "api_key": "API Key (requerido para proveedores cloud)",
+                "base_url": "URL base (opcional)",
+                "security_mode": "Modo de seguridad (safe, hybrid, unrestricted)",
+                "language": "Idioma"
+            },
+            "data_description": {
+                "llm_provider": "Selecciona el proveedor del modelo de IA",
+                "llm_model": "Escribe el nombre del modelo tal cual aparece en el proveedor",
+                "api_key": "Clave API necesaria para proveedores cloud (Ollama Cloud, OpenAI, MiniMax, etc.)",
+                "security_mode": "Hybrid permite acciones normales sin confirmación pero requiere confirmación para acciones críticas"
+            }
+        }
+    ],
+    "options": [
+        {
+            "title": "Opciones de IA Assistant",
+            "input": {
+                "llm_model": {
+                    "name": "Modelo",
+                    "description": "Cambia el modelo de IA"
+                },
+                "security_mode": {
+                    "name": "Modo de seguridad",
+                    "description": "Control de confirmaciones"
+                }
+            }
+        }
+    ],
+    "services": {
+        "chat": {
+            "name": "Chat",
+            "description": "Envía un mensaje al asistente",
+            "fields": {
+                "message": {
+                    "name": "Mensaje",
+                    "description": "Mensaje a enviar"
+                }
+            }
+        },
+        "set_model": {
+            "name": "Cambiar modelo",
+            "description": "Cambia el modelo de IA activo",
+            "fields": {
+                "model": {
+                    "name": "Modelo",
+                    "description": "Nombre del modelo"
+                }
+            }
+        },
+        "clear_history": {
+            "name": "Limpiar historial",
+            "description": "Limpia el historial de conversación"
+        }
+    }
+}
