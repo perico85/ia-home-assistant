@@ -5,7 +5,7 @@
     "documentation": "https://github.com/perico85/ia-home-assistant",
     "issue_tracker": "https://github.com/perico85/ia-home-assistant/issues",
     "dependencies": ["conversation"],
-    "after_dependencies": ["http"],
+    "after_dependencies": [],
     "codeowners": ["@perico85"],
     "requirements": ["aiohttp>=3.9.0"],
     "iot_class": "local_push",
