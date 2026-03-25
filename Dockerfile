@@ -24,6 +24,10 @@ COPY custom_components/ ./custom_components/
 COPY install_integration.sh ./install_integration.sh
 RUN chmod +x ./install_integration.sh
 
+# Copiar script de inicio
+COPY run.sh ./run.sh
+RUN chmod +x ./run.sh
+
 # Variables de entorno
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=app.main
