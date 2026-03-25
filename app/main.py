@@ -4,6 +4,7 @@ Asistente IA con control total de Home Assistant usando Ollama Cloud
 """
 
 import os
+import json
 import logging
 from flask import Flask
 from flask_socketio import SocketIO
@@ -16,20 +17,59 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Leer opciones de Home Assistant desde /data/options.json
+def load_options():
+    """Cargar opciones desde /data/options.json o variables de entorno"""
+    options = {
+        'ha_url': os.getenv('HA_URL', 'http://homeassistant:8123'),
+        'ha_token': os.getenv('HA_TOKEN', ''),
+        'ollama_mode': os.getenv('OLLAMA_MODE', 'cloud'),
+        'ollama_api_key': os.getenv('OLLAMA_API_KEY', ''),
+        'ollama_model': os.getenv('OLLAMA_MODEL', 'llama3.2'),
+        'ollama_base_url': os.getenv('OLLAMA_BASE_URL', ''),
+        'language': os.getenv('LANGUAGE', 'es'),
+        'security_mode': os.getenv('SECURITY_MODE', 'hybrid'),
+        'log_level': os.getenv('LOG_LEVEL', 'INFO'),
+    }
+
+    # Intentar leer desde /data/options.json (formato Home Assistant Supervisor)
+    options_file = '/data/options.json'
+    if os.path.exists(options_file):
+        try:
+            with open(options_file, 'r') as f:
+                ha_options = json.load(f)
+                logger.info(f"Opciones cargadas desde {options_file}")
+                # Sobrescribir con las opciones del usuario
+                for key, value in ha_options.items():
+                    if key in options:
+                        options[key] = value
+                        # También exportar como variable de entorno
+                        os.environ[key.upper()] = str(value) if value else ''
+        except Exception as e:
+            logger.warning(f"Error leyendo {options_file}: {e}")
+    else:
+        logger.info(f"Archivo {options_file} no encontrado, usando variables de entorno")
+
+    return options
+
+# Cargar opciones
+options = load_options()
+
 # Crear aplicación Flask
 app = Flask(__name__,
             static_folder='../frontend/static',
             template_folder='../frontend')
 
-# Configuración
+# Configuración desde opciones
 app.config['SECRET_KEY'] = os.urandom(24).hex()
-app.config['HA_URL'] = os.getenv('HA_URL', 'http://homeassistant:8123')
-app.config['HA_TOKEN'] = os.getenv('HA_TOKEN', '')
-app.config['OLLAMA_API_KEY'] = os.getenv('OLLAMA_API_KEY', '')
-app.config['OLLAMA_MODEL'] = os.getenv('OLLAMA_MODEL', 'llama3.2')
-app.config['OLLAMA_BASE_URL'] = os.getenv('OLLAMA_BASE_URL', 'https://api.ollama.ai')
-app.config['LANGUAGE'] = os.getenv('LANGUAGE', 'es')
-app.config['SECURITY_MODE'] = os.getenv('SECURITY_MODE', 'hybrid')
+app.config['HA_URL'] = options['ha_url']
+app.config['HA_TOKEN'] = options['ha_token']
+app.config['OLLAMA_MODE'] = options['ollama_mode']
+app.config['OLLAMA_API_KEY'] = options['ollama_api_key']
+app.config['OLLAMA_MODEL'] = options['ollama_model']
+app.config['OLLAMA_BASE_URL'] = options['ollama_base_url']
+app.config['LANGUAGE'] = options['language']
+app.config['SECURITY_MODE'] = options['security_mode']
 
 # CORS
 CORS(app)
@@ -38,7 +78,7 @@ CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Importar módulos después de crear app para evitar imports circulares
-from app.core import ollama_client, ha_api, context, executor
+from app.core import ollama_client, ollama_cloud_client, ha_api, context, executor
 from app.interfaces import chat, voice, cli, rest_api
 from app.tools import entity_tools, automation, script_tools, config_tools
 from app.prompts import system_prompt
@@ -50,11 +90,21 @@ ha_client = ha_api.HomeAssistantClient(
     token=app.config['HA_TOKEN']
 )
 
-ollama = ollama_client.OllamaClient(
-    base_url=app.config['OLLAMA_BASE_URL'],
-    api_key=app.config['OLLAMA_API_KEY'],
-    model=app.config['OLLAMA_MODEL']
-)
+# Seleccionar cliente Ollama según el modo
+if app.config['OLLAMA_MODE'] == 'cloud' or ':cloud' in app.config['OLLAMA_MODEL']:
+    ollama = ollama_cloud_client.OllamaCloudClient(
+        model=app.config['OLLAMA_MODEL'],
+        api_key=app.config['OLLAMA_API_KEY'],
+        base_url=app.config['OLLAMA_BASE_URL'] if app.config['OLLAMA_BASE_URL'] else None,
+        use_cloud=True
+    )
+    logger.info("Usando Ollama Cloud")
+else:
+    ollama = ollama_client.OllamaClient(
+        base_url=app.config['OLLAMA_BASE_URL'] or 'http://localhost:11434',
+        model=app.config['OLLAMA_MODEL']
+    )
+    logger.info("Usando Ollama local")
 
 context_manager = context.ContextManager(language=app.config['LANGUAGE'])
 action_executor = executor.ActionExecutor(ha_client, app.config['SECURITY_MODE'])
@@ -81,10 +131,18 @@ def main():
     logger.info("IA Home Assistant v1.0.0")
     logger.info("=" * 50)
     logger.info(f"Home Assistant URL: {app.config['HA_URL']}")
+    logger.info(f"Ollama Mode: {app.config['OLLAMA_MODE']}")
     logger.info(f"Ollama Model: {app.config['OLLAMA_MODEL']}")
     logger.info(f"Language: {app.config['LANGUAGE']}")
     logger.info(f"Security Mode: {app.config['SECURITY_MODE']}")
     logger.info("=" * 50)
+
+    # Verificar que el token está configurado
+    if not app.config['HA_TOKEN']:
+        logger.error("❌ HA_TOKEN no está configurado!")
+        logger.error("   Configure el token de acceso de larga duración en las opciones del add-on")
+    else:
+        logger.info(f"✅ Token configurado ({len(app.config['HA_TOKEN'])} caracteres)")
 
     # Verificar conexiones
     logger.info("Verificando conexiones...")
@@ -93,13 +151,20 @@ def main():
     if ha_client.test_connection():
         logger.info("✅ Conexión a Home Assistant: OK")
     else:
-        logger.warning("❌ No se pudo conectar a Home Assistant")
+        logger.warning("❌ No se pudo conectar a Home Assistant - Verifique URL y Token")
 
-    # Verificar Ollama
-    if ollama.test_connection():
-        logger.info(f"✅ Conexión a Ollama: OK (modelo: {app.config['OLLAMA_MODEL']})")
+    # Verificar Ollama (solo para modo local)
+    if app.config['OLLAMA_MODE'] == 'local':
+        if hasattr(ollama, 'test_connection') and ollama.test_connection():
+            logger.info(f"✅ Conexión a Ollama: OK (modelo: {app.config['OLLAMA_MODEL']})")
+        else:
+            logger.warning("❌ No se pudo conectar a Ollama")
     else:
-        logger.warning("❌ No se pudo conectar a Ollama")
+        # Para cloud, verificar que hay API key
+        if app.config['OLLAMA_API_KEY']:
+            logger.info(f"✅ Ollama Cloud configurado (modelo: {app.config['OLLAMA_MODEL']})")
+        else:
+            logger.warning("⚠️ Ollama Cloud sin API key configurada")
 
     # Iniciar servidor
     port = int(os.getenv('PORT', 8080))
