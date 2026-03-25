@@ -1,27 +1,48 @@
 """
 Agente de conversación para Home Assistant Assist
-Se comunica con el addon IA Home Assistant via API
+Compatible con Home Assistant 2026+
 """
 
 import logging
-import json
 import aiohttp
 from typing import Optional, List, Dict, Any
-from homeassistant.components.conversation import (
-    ConversationAgent,
-    ConversationInput,
-    ConversationResult,
-)
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import intent
 from homeassistant.util import ulid
 
 from .const import DOMAIN, CONF_ADDON_URL, DEFAULT_ADDON_URL
 
 _LOGGER = logging.getLogger(__name__)
 
+# Importaciones condicionales para compatibilidad
+try:
+    # HA 2024.11+ usa la nueva API
+    from homeassistant.components.conversation import (
+        AbstractConversationAgent,
+        ConversationInput,
+        ConversationResult,
+        ConversationOutput,
+    )
+    NEW_API = True
+except ImportError:
+    # Versiones anteriores
+    try:
+        from homeassistant.components.conversation import (
+            ConversationAgent,
+            ConversationInput,
+            ConversationResult,
+        )
+        AbstractConversationAgent = ConversationAgent
+        ConversationOutput = None
+        NEW_API = False
+    except ImportError:
+        AbstractConversationAgent = None
+        ConversationInput = None
+        ConversationResult = None
+        ConversationOutput = None
+        NEW_API = False
 
-class IAConversationAgent(ConversationAgent):
+
+class IAConversationAgent:
     """
     Agente de conversación que se comunica con el addon IA Home Assistant
     """
@@ -42,7 +63,7 @@ class IAConversationAgent(ConversationAgent):
         }
 
     @property
-    def default_speech(self):
+    def default_speech(self) -> str:
         """Mensaje por defecto cuando no se entiende"""
         return {
             "es": "No he entendido tu solicitud. ¿Puedes reformularla?",
@@ -57,15 +78,17 @@ class IAConversationAgent(ConversationAgent):
     async def async_process(
         self,
         hass: HomeAssistant,
-        conversation_input: ConversationInput,
-        context: Optional[Dict[str, Any]] = None
-    ) -> ConversationResult:
+        user_input: str,
+        conversation_id: Optional[str] = None,
+        language: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        extra_exposed_entities: Optional[List[Dict]] = None,
+    ) -> Dict[str, Any]:
         """
         Procesar entrada de conversación enviando al addon via API
         """
-        user_input = conversation_input.text
-        language = conversation_input.language or self._language
-        conversation_id = conversation_input.conversation_id
+        language = language or self._language
 
         _LOGGER.debug(f"Procesando: '{user_input}' (idioma: {language})")
 
@@ -83,14 +106,14 @@ class IAConversationAgent(ConversationAgent):
 
             if response.get("success"):
                 message = response.get("message", self.default_speech)
-                return self._create_success_result(message)
+                return {"response": message, "conversation_id": conversation_id or ulid.ulid()}
             else:
                 error = response.get("error", "Error desconocido")
-                return self._create_error_result(f"Error: {error}")
+                return {"response": f"Error: {error}", "conversation_id": conversation_id or ulid.ulid()}
 
         except Exception as e:
             _LOGGER.error(f"Error procesando conversación: {e}")
-            return self._create_error_result(f"Error de conexión con el addon: {str(e)}")
+            return {"response": f"Error de conexión con el addon: {str(e)}", "conversation_id": conversation_id or ulid.ulid()}
 
     async def _call_addon_api(
         self,
@@ -106,7 +129,7 @@ class IAConversationAgent(ConversationAgent):
             "message": text,
             "language": language,
             "context": {
-                "entities": entities[:50],  # Limitar entidades
+                "entities": entities[:50],
                 "conversation_id": conversation_id
             }
         }
@@ -133,39 +156,25 @@ class IAConversationAgent(ConversationAgent):
 
     async def _get_exposed_entities(self, hass: HomeAssistant) -> List[Dict]:
         """Obtener entidades expuestas al asistente"""
-        from homeassistant.components.homeassistant.exposed_entities import async_should_expose
+        try:
+            from homeassistant.components.homeassistant.exposed_entities import async_should_expose
 
-        states = hass.states.async_all()
-        exposed = []
+            states = hass.states.async_all()
+            exposed = []
 
-        for state in states:
-            if async_should_expose(hass, "conversation", state.entity_id):
-                exposed.append({
-                    "entity_id": state.entity_id,
-                    "state": state.state,
-                    "attributes": {
-                        "friendly_name": state.attributes.get("friendly_name", state.entity_id),
-                        "device_class": state.attributes.get("device_class"),
-                        "unit_of_measurement": state.attributes.get("unit_of_measurement"),
-                    }
-                })
+            for state in states:
+                if async_should_expose(hass, "conversation", state.entity_id):
+                    exposed.append({
+                        "entity_id": state.entity_id,
+                        "state": state.state,
+                        "attributes": {
+                            "friendly_name": state.attributes.get("friendly_name", state.entity_id),
+                            "device_class": state.attributes.get("device_class"),
+                            "unit_of_measurement": state.attributes.get("unit_of_measurement"),
+                        }
+                    })
 
-        return exposed
-
-    def _create_success_result(self, message: str) -> ConversationResult:
-        """Crear resultado exitoso"""
-        intent_response = intent.IntentResponse(language=self._language)
-        intent_response.async_set_speech(message)
-        return ConversationResult(
-            response=intent_response,
-            conversation_id=ulid.ulid(),
-        )
-
-    def _create_error_result(self, error: str) -> ConversationResult:
-        """Crear resultado de error"""
-        intent_response = intent.IntentResponse(language=self._language)
-        intent_response.async_set_speech(f"Error: {error}")
-        return ConversationResult(
-            response=intent_response,
-            conversation_id=ulid.ulid(),
-        )
+            return exposed
+        except Exception as e:
+            _LOGGER.warning(f"Error obteniendo entidades expuestas: {e}")
+            return []

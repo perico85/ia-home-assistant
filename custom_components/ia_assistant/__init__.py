@@ -29,23 +29,35 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Registrar el agente de conversación
     try:
-        from homeassistant.components.conversation import async_set_agent
+        # HA 2024.11+ con nueva API
+        from homeassistant.components.conversation import async_create_agent
 
-        async_set_agent(hass, entry, agent)
-        _LOGGER.info(f"IA Assistant registrado correctamente con URL: {addon_url}")
+        agent_entry = async_create_agent(hass, entry, agent)
+        hass.data[DOMAIN][f"{entry.entry_id}_agent"] = agent_entry
+        _LOGGER.info(f"IA Assistant registrado correctamente (nueva API) con URL: {addon_url}")
         return True
 
     except ImportError:
-        # Fallback para versiones anteriores
         try:
-            from homeassistant.components.conversation import DOMAIN as CONVERSATION_DOMAIN
-            hass.data.setdefault(CONVERSATION_DOMAIN, {})
-            hass.data[CONVERSATION_DOMAIN][entry.entry_id] = agent
-            _LOGGER.info(f"IA Assistant registrado (método fallback) con URL: {addon_url}")
+            # HA 2024.x con API anterior
+            from homeassistant.components.conversation import async_register_agent
+
+            async_register_agent(hass, DOMAIN, entry.entry_id, agent)
+            hass.data[DOMAIN][f"{entry.entry_id}_agent"] = agent
+            _LOGGER.info(f"IA Assistant registrado correctamente (API anterior) con URL: {addon_url}")
             return True
-        except Exception as e:
-            _LOGGER.error(f"Error registrando IA Assistant: {e}")
-            return False
+
+        except ImportError:
+            try:
+                # Fallback: guardar en hass.data
+                from homeassistant.components.conversation import DOMAIN as CONVERSATION_DOMAIN
+                hass.data.setdefault(CONVERSATION_DOMAIN, {})
+                hass.data[CONVERSATION_DOMAIN][entry.entry_id] = agent
+                _LOGGER.info(f"IA Assistant registrado correctamente (fallback) con URL: {addon_url}")
+                return True
+            except Exception as e:
+                _LOGGER.error(f"Error registrando IA Assistant: {e}")
+                return False
     except Exception as e:
         _LOGGER.error(f"Error registrando IA Assistant: {e}")
         return False
@@ -54,5 +66,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Descargar entrada de configuración"""
     if entry.entry_id in hass.data[DOMAIN]:
+        # Eliminar agente
+        agent_key = f"{entry.entry_id}_agent"
+        if agent_key in hass.data[DOMAIN]:
+            del hass.data[DOMAIN][agent_key]
         del hass.data[DOMAIN][entry.entry_id]
     return True
